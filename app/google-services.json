@@ -1,0 +1,42 @@
+{
+  "project_info": {
+    "project_number": "244720145013",
+    "firebase_url": "https://track-your-bus-1513196708316.firebaseio.com",
+    "project_id": "track-your-bus-1513196708316",
+    "storage_bucket": "track-your-bus-1513196708316.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:244720145013:android:30e388eab1c30e54",
+        "android_client_info": {
+          "package_name": "com.jilexandr.trackyourbus"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "244720145013-lt49bs0u2qv91j207aq7n8vv9htmu0g8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAG1EykenWRInfzxfTvK1ESoZG8nCxdSyg"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

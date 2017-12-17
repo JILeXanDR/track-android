@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Track Your Bus</string>
+    <string name="title_activity_maps">Map</string>
+    <string name="title_activity_start">Start</string>
+    <string name="title_activity_main">MainActivity</string>
+    <string name="title_home">Home</string>
+    <string name="title_dashboard">Dashboard</string>
+    <string name="title_notifications">Notifications</string>
+    <string name="title_activity_base">BaseActivity</string>
+    <string name="title_map">Map</string>
+    <string name="nearest_bus_station">nearest bus station</string>
+    <string name="i_am_a_button">I am a Button</string>
+    <string name="i_am_a_textview">I am a TextView</string>
+    <string name="title_modal_choose_bus">Subscribe bus route</string>
+    <string name="cancel">Cancel</string>
+    <string name="subscribe">Subscribe</string>
+</resources>
