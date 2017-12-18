@@ -5,11 +5,13 @@ import android.content.Context;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.Bundle;
+import android.provider.Settings.Secure;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.DialogFragment;
 import android.support.v4.app.FragmentActivity;
-import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -17,6 +19,7 @@ import android.widget.Toast;
 import com.github.nkzawa.emitter.Emitter;
 import com.github.nkzawa.socketio.client.IO;
 import com.github.nkzawa.socketio.client.Socket;
+import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -30,13 +33,14 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.net.URISyntaxException;
-import java.util.ArrayList;
+import java.security.Permission;
 import java.util.HashMap;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import android.provider.Settings.Secure;
+import static android.Manifest.permission.ACCESS_FINE_LOCATION;
+
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
@@ -46,12 +50,38 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private Marker currentBusStationMarker;
     private Location lastLocation;
 
-    private void log(String message) {
-        Logger logger = Logger.getLogger("com.jilexandr.xxx");
-        logger.log(new MyLevel("DISASTER", Level.SEVERE.intValue() + 1), message);
-    }
+    private Button btnImHere;
+    private Button btnNearestStations;
+    private SeekBar seekBarChangeSpeed;
 
     private Socket mSocket;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_maps);
+
+        ActivityCompat.requestPermissions(this, new String[]{ACCESS_FINE_LOCATION}, 225);
+
+        btnImHere = (Button) findViewById(R.id.button_am_here);
+        btnNearestStations = (Button) findViewById(R.id.button_find_nearest_bus_station);
+        seekBarChangeSpeed = (SeekBar) findViewById(R.id.speed);
+
+        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
+        mapFragment.getMapAsync(this);
+
+        initWebSockets();
+
+        // change fake speed
+        seekBarChangeSpeed.setOnSeekBarChangeListener(new SeekBarChangeSpeedChangeListener());
+
+        // show current position
+        btnImHere.setOnClickListener(new BtnImHereClickListener());
+
+        // find nearest bus station
+        btnNearestStations.setOnClickListener(new BtnNearestStationsClickListener());
+    }
 
     private Emitter.Listener onConnect = new Emitter.Listener() {
         @Override
@@ -77,86 +107,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     };
 
-    private String getUrl(double latitude, double longitude, double radius) {
-
-        StringBuilder googlePlacesUrl = new StringBuilder("https://maps.googleapis.com/maps/api/place/nearbysearch/json?");
-        googlePlacesUrl.append("location=" + latitude + "," + longitude);
-        googlePlacesUrl.append("&radius=" + radius);
-        googlePlacesUrl.append("&type=" + "bus_station");
-        googlePlacesUrl.append("&sensor=true");
-        googlePlacesUrl.append("&key=" + "AIzaSyB9sHnLpEKYxM8pd0DutRyvko6Lgxzdf3Y");
-        Log.d("getUrl", googlePlacesUrl.toString());
-        return googlePlacesUrl.toString();
+    private void log(String message) {
+        Logger logger = Logger.getLogger("com.jilexandr.xxx");
+        logger.log(new MyLevel("DISASTER", Level.SEVERE.intValue() + 1), message);
     }
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    private String getUrl(double latitude, double longitude, double radius) {
 
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_maps);
-
-        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
-        mapFragment.getMapAsync(this);
-
-        ws();
-
-        SeekBar speed = findViewById(R.id.speed);
-        speed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
-
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                Location location = new Location(LocationManager.GPS_PROVIDER);
-                location.setSpeed(seekBar.getProgress());
-                onLocationChangedFn(location);
-            }
-        });
-
-        findViewById(R.id.button).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-
-                Context context = getApplicationContext();
-                CharSequence text = "Hello toast!";
-                int duration = Toast.LENGTH_SHORT;
-
-                Toast toast = Toast.makeText(context, text, duration);
-                toast.show();
-            }
-        });
-
-        // find nearest bus station
-        findViewById(R.id.button2).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-
-                Object[] data = new Object[2];
-
-                data[0] = mMap;
-                data[1] = getUrl(lastLocation.getLatitude(), lastLocation.getLongitude(), 300);
-
-                GetNearbyPlacesData getNearbyPlacesData = new GetNearbyPlacesData();
-                getNearbyPlacesData.onResultHandler = new GetNearbyPlacesData.OnResult() {
-                    @Override
-                    public void call(List<HashMap<String, String>> placesList) {
-                        Toast.makeText(MapsActivity.this, String.format("Found stations: %s", placesList.size()), Toast.LENGTH_LONG).show();
-                        for (int i = 0; i < placesList.size(); i++) {
-                            HashMap<String, String> googlePlace = placesList.get(i);
-                            createMarker(googlePlace);
-                        }
-                    }
-                };
-                getNearbyPlacesData.execute(data);
-            }
-        });
+        return "https://maps.googleapis.com/maps/api/place/nearbysearch/json?" + "location=" + latitude + "," + longitude +
+                "&radius=" + radius +
+                "&type=" + "bus_station" +
+                "&sensor=true" +
+                "&key=" + getResources().getString(R.string.google_maps_key);
     }
 
     private void createMarker(HashMap<String, String> googlePlace) {
@@ -180,47 +142,15 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mMap.animateCamera(CameraUpdateFactory.zoomTo(15));
     }
 
-    private void ws() {
+    private void initWebSockets() {
 
         try {
             mSocket = IO.socket("http://192.168.0.101:3000");
 
             mSocket.on(Socket.EVENT_CONNECT, onConnect);
-
-            mSocket.on("checkInBus", new Emitter.Listener() {
-                public void call(Object... args) {
-
-                    JSONObject data = (JSONObject) args[0];
-
-                    DialogFragment newFragment = new CheckBusDialogFragment();
-
-                    try {
-                        String speed = data.getString("speed");
-
-                        Bundle bundle = new Bundle();
-                        bundle.putString("content", String.format("Your speed was changed to %s. Are you in the bus?", speed));
-
-                        newFragment.setArguments(bundle);
-                        newFragment.show(getSupportFragmentManager(), "missiles");
-
-                    } catch (JSONException e) {
-                        e.printStackTrace();
-                    }
-                }
-            });
-
-            mSocket.on(Socket.EVENT_DISCONNECT, new Emitter.Listener() {
-                public void call(Object... args) {
-                    log("Socket.EVENT_DISCONNECT");
-                }
-            });
-
-            mSocket.on(Socket.EVENT_ERROR, new Emitter.Listener() {
-                public void call(Object... args) {
-                    log("Socket.EVENT_ERROR");
-                }
-            });
-
+            mSocket.on("checkInBus", new OnCheckMyBusEvent());
+            mSocket.on(Socket.EVENT_DISCONNECT, new OnDisconnectEvent());
+            mSocket.on(Socket.EVENT_ERROR, new OnErrorEvent());
             mSocket.connect();
 
         } catch (URISyntaxException e) {
@@ -228,16 +158,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     }
 
-
-    /**
-     * Manipulates the map once available.
-     * This callback is triggered when the map is ready to be used.
-     * This is where we can add markers or lines, add listeners or move the camera. In this case,
-     * we just add a marker near Sydney, Australia.
-     * If Google Play services is not installed on the device, the user will be prompted to install
-     * it inside the SupportMapFragment. This method will only be triggered once the user has
-     * installed Google Play services and returned to the app.
-     */
     @SuppressLint("MissingPermission")
     @Override
     public void onMapReady(GoogleMap googleMap) {
@@ -249,6 +169,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
             @Override
             public boolean onMarkerClick(Marker marker) {
+
+                // don't process click on user's position marker
+                if (marker.equals(currentUserMarker)) {
+                    return false;
+                }
 
                 if (currentBusStationMarker != null) {
                     currentBusStationMarker.setIcon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
@@ -268,6 +193,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         text.setText(selectedItems.toString());
                     }
                 });
+
                 dialog.show(getSupportFragmentManager(), "choose_bus");
 
                 return false;
@@ -277,14 +203,19 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         LocationManager locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
 
         lastLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+
+//        if (lastLocation == null) {
+//            lastLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+//        }
+
         if (lastLocation != null) {
             onLocationChangedFn(locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER));
         }
 
         locationManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
-                5000,
-                10,
+                1000,
+                0,
                 new LocationListener() {
                     @Override
                     public void onLocationChanged(Location location) {
@@ -309,10 +240,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     private void onLocationChangedFn(Location location) {
+        if (location == null) {
+            return;
+        }
         lastLocation = location;
         LatLng position = new LatLng(location.getLatitude(), location.getLongitude());
         if (currentUserMarker == null) {
-            currentUserMarker = mMap.addMarker(new MarkerOptions().position(position));
+            MarkerOptions markerOptions = new MarkerOptions();
+            markerOptions.position(position);
+            markerOptions.icon(BitmapDescriptorFactory.fromResource(R.mipmap.ic_launcher_round));
+            currentUserMarker = mMap.addMarker(markerOptions);
         } else {
             currentUserMarker.setPosition(position);
         }
@@ -329,5 +266,99 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
         mMap.moveCamera(CameraUpdateFactory.newLatLng(position));
         mMap.moveCamera(CameraUpdateFactory.zoomTo(10));
+    }
+
+    class GetNearbyPlacesDataOnResult implements GetNearbyPlacesData.OnResult {
+        @Override
+        public void call(List<HashMap<String, String>> placesList) {
+            Toast.makeText(MapsActivity.this, String.format("Found stations: %s", placesList.size()), Toast.LENGTH_LONG).show();
+            for (int i = 0; i < placesList.size(); i++) {
+                HashMap<String, String> googlePlace = placesList.get(i);
+                createMarker(googlePlace);
+            }
+        }
+    }
+
+    private class OnCheckMyBusEvent implements Emitter.Listener {
+        public void call(Object... args) {
+
+            JSONObject data = (JSONObject) args[0];
+
+            DialogFragment newFragment = new CheckBusDialogFragment();
+
+            try {
+                String speed = data.getString("speed");
+
+                Bundle bundle = new Bundle();
+                bundle.putString("content", String.format("Your speed was changed to %s. Are you in the bus?", speed));
+
+                newFragment.setArguments(bundle);
+                newFragment.show(getSupportFragmentManager(), "missiles");
+
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private class OnDisconnectEvent implements Emitter.Listener {
+        public void call(Object... args) {
+            log("Socket.EVENT_DISCONNECT");
+        }
+    }
+
+    private class OnErrorEvent implements Emitter.Listener {
+        public void call(Object... args) {
+            log("Socket.EVENT_ERROR");
+        }
+    }
+
+    private class BtnImHereClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View view) {
+
+            LatLng position = new LatLng(lastLocation.getLatitude(), lastLocation.getLongitude());
+
+            mMap.moveCamera(CameraUpdateFactory.newLatLng(position));
+
+            Context context = getApplicationContext();
+            CharSequence text = "Hello toast!";
+            int duration = Toast.LENGTH_SHORT;
+
+            Toast toast = Toast.makeText(context, text, duration);
+            toast.show();
+        }
+    }
+
+    private class BtnNearestStationsClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View view) {
+
+            Object[] data = new Object[1];
+
+            data[0] = getUrl(lastLocation.getLatitude(), lastLocation.getLongitude(), 300);
+
+            GetNearbyPlacesData getNearbyPlacesData = new GetNearbyPlacesData();
+            getNearbyPlacesData.onResultHandler = new GetNearbyPlacesDataOnResult();
+            getNearbyPlacesData.execute(data);
+        }
+    }
+
+    private class SeekBarChangeSpeedChangeListener implements SeekBar.OnSeekBarChangeListener {
+        @Override
+        public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+
+        }
+
+        @Override
+        public void onStartTrackingTouch(SeekBar seekBar) {
+
+        }
+
+        @Override
+        public void onStopTrackingTouch(SeekBar seekBar) {
+            lastLocation.setSpeed(seekBar.getProgress());
+            onLocationChangedFn(lastLocation);
+        }
     }
 }

@@ -32,4 +32,5 @@ dependencies {
     compile 'com.github.nkzawa:socket.io-client:0.3.0'
     implementation 'com.android.support.constraint:constraint-layout:1.0.2'
     compile 'com.google.firebase:firebase-messaging:11.6.2'
+    compile 'com.squareup.okhttp3:okhttp:3.9.1'
 }

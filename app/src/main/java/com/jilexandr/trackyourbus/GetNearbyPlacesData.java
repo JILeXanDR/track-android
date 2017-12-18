@@ -12,10 +12,13 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import java.util.HashMap;
 import java.util.List;
 
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+
 class GetNearbyPlacesData extends AsyncTask<Object, String, String> {
 
     private String googlePlacesDataJson = "";
-    private GoogleMap mMap;
     public OnResult onResultHandler;
 
     interface OnResult {
@@ -25,11 +28,15 @@ class GetNearbyPlacesData extends AsyncTask<Object, String, String> {
     @Override
     protected String doInBackground(Object... params) {
 
-        mMap = (GoogleMap) params[0];
-        String url = (String) params[1];
+        String url = (String) params[0];
 
         try {
-            googlePlacesDataJson = HttpRequest.get(url);
+
+            Request request = new Request.Builder().url(url).build();
+            Response response = (new OkHttpClient()).newCall(request).execute();
+
+            googlePlacesDataJson = response.body().string();
+
         } catch (Exception e) {
             Log.d("GooglePlacesReadTask", e.toString());
         }
