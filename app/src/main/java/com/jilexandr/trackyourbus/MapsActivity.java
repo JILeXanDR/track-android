@@ -19,7 +19,6 @@ import android.widget.Toast;
 import com.github.nkzawa.emitter.Emitter;
 import com.github.nkzawa.socketio.client.IO;
 import com.github.nkzawa.socketio.client.Socket;
-import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -33,14 +32,14 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.net.URISyntaxException;
-import java.security.Permission;
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
-
+import static android.Manifest.permission.INTERNET;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
@@ -56,22 +55,43 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private Socket mSocket;
 
+//    final private static String MODE_TRACKING = "tracking";
+//    final private static String MODE_SUBSCRIBING = "subscribing";
+
+    private Boolean isInTransport = false;
+    private String transportId = null;
+
+    private String getType() {
+        return isInTransport ? "bus" : "client";
+    }
+
+//    private String currentMode = MODE_SUBSCRIBING;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
 
-        ActivityCompat.requestPermissions(this, new String[]{ACCESS_FINE_LOCATION}, 225);
+        ActivityCompat.requestPermissions(this, new String[]{ACCESS_FINE_LOCATION, INTERNET}, 225);
+
+        String android_id = Secure.getString(this.getContentResolver(), Secure.ANDROID_ID);
+        log(android_id);
 
         btnImHere = (Button) findViewById(R.id.button_am_here);
         btnNearestStations = (Button) findViewById(R.id.button_find_nearest_bus_station);
         seekBarChangeSpeed = (SeekBar) findViewById(R.id.speed);
 
+        Callable callable = () -> "Hello from callable!";
+
+        try {
+            callable.call();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
-
-        initWebSockets();
 
         // change fake speed
         seekBarChangeSpeed.setOnSeekBarChangeListener(new SeekBarChangeSpeedChangeListener());
@@ -81,6 +101,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         // find nearest bus station
         btnNearestStations.setOnClickListener(new BtnNearestStationsClickListener());
+
+        initWebSockets();
     }
 
     private Emitter.Listener onConnect = new Emitter.Listener() {
@@ -112,13 +134,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         logger.log(new MyLevel("DISASTER", Level.SEVERE.intValue() + 1), message);
     }
 
-    private String getUrl(double latitude, double longitude, double radius) {
+    private String getUrl(double lat, double lng) {
 
-        return "https://maps.googleapis.com/maps/api/place/nearbysearch/json?" + "location=" + latitude + "," + longitude +
-                "&radius=" + radius +
-                "&type=" + "bus_station" +
-                "&sensor=true" +
-                "&key=" + getResources().getString(R.string.google_maps_key);
+        return "http://localhost:3000/api/near?coords=" + lat + "," + lng;
     }
 
     private void createMarker(HashMap<String, String> googlePlace) {
@@ -166,38 +184,33 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         // click on bus station marker
         // choose interested bus
-        mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
-            @Override
-            public boolean onMarkerClick(Marker marker) {
+        mMap.setOnMarkerClickListener(marker -> {
 
-                // don't process click on user's position marker
-                if (marker.equals(currentUserMarker)) {
-                    return false;
-                }
-
-                if (currentBusStationMarker != null) {
-                    currentBusStationMarker.setIcon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
-                }
-
-                currentBusStationMarker = marker;
-                currentBusStationMarker.setIcon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
-
-                TextView selectedBusStationText = (TextView) findViewById(R.id.selectedBusStationText);
-                selectedBusStationText.setText(currentBusStationMarker.getTitle());
-
-                ChooseBusDialogFragment dialog = new ChooseBusDialogFragment();
-                dialog.setOnConfirmResult(new ConfirmResult() {
-                    @Override
-                    public void on(List<BusRoute> selectedItems) {
-                        TextView text = (TextView) findViewById(R.id.textSelectedRoutes);
-                        text.setText(selectedItems.toString());
-                    }
-                });
-
-                dialog.show(getSupportFragmentManager(), "choose_bus");
-
+            // don't process click on user's position marker
+            if (marker.equals(currentUserMarker)) {
                 return false;
             }
+
+            if (currentBusStationMarker != null) {
+                currentBusStationMarker.setIcon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
+            }
+
+            currentBusStationMarker = marker;
+            currentBusStationMarker.setIcon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
+
+            TextView selectedBusStationText = (TextView) findViewById(R.id.selectedBusStationText);
+            selectedBusStationText.setText(currentBusStationMarker.getTitle());
+
+            ChooseBusDialogFragment dialog = new ChooseBusDialogFragment();
+
+            dialog.setOnConfirmResult(selectedItems -> {
+                TextView text = (TextView) findViewById(R.id.textSelectedRoutes);
+                text.setText(selectedItems.toString());
+            });
+
+            dialog.show(getSupportFragmentManager(), "choose_bus");
+
+            return false;
         });
 
         LocationManager locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
@@ -256,11 +269,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         try {
             JSONObject data = new JSONObject();
             JSONObject coords = new JSONObject();
-            coords.put("latitude", location.getLatitude());
-            coords.put("longitude", location.getLongitude());
+            JSONObject transport = new JSONObject();
+
+            coords.put("lat", location.getLatitude());
+            coords.put("lng", location.getLongitude());
+
+            transport.put("id", transportId);
+
+            data.put("type", getType());
             data.put("coords", coords);
             data.put("speed", location.getSpeed());
-            mSocket.emit("locationWasChanged", data);
+            data.put("transport", transport);
+            mSocket.emit("updateLocation", data);
         } catch (JSONException e) {
             e.printStackTrace();
         }
@@ -336,7 +356,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
             Object[] data = new Object[1];
 
-            data[0] = getUrl(lastLocation.getLatitude(), lastLocation.getLongitude(), 300);
+            data[0] = getUrl(lastLocation.getLatitude(), lastLocation.getLongitude());
 
             GetNearbyPlacesData getNearbyPlacesData = new GetNearbyPlacesData();
             getNearbyPlacesData.onResultHandler = new GetNearbyPlacesDataOnResult();
